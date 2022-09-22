@@ -3,8 +3,14 @@ import select
 import sys
 
 def simple_web_server(ip_num, port):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(ip_num, port)
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(ip_num, port)
+    server.setblocking(0)
+    server.listen(5)
+    sockets = server
+    
+    
+    
     
     
 
