@@ -4,6 +4,8 @@ import sys
 
 def simple_web_server(ip_num, port):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(ip_num, port)
+    
     
 
 
