@@ -1,20 +1,29 @@
 import socket
 import select
 import sys
+import queue
+import time
+import re
 
 def simple_web_server(ip_num, port):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(ip_num, port)
     server.setblocking(0)
+    server_address = (ip_num, port)
+    server.bind(server_address)
     server.listen(5)
-    sockets = server
+    inputs = [server]
+    outputs = []
+    response_messages = {}
+    request_message = {}
+    while True:
+        readable, writable, exceptional = select.select(inputs, outputs, inputs)
+        for s in readable:
+            if s == server:
+            
+                
+        
     
     
-    
-    
-    
-
-
 
 
 def main():
