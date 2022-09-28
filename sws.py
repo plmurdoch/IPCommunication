@@ -28,6 +28,7 @@ def listen_for_sockets(server):
                 message = s.recv(1024).decode()
             if message:
                 message_reader(message, response_messages, request_message)
+                break
 
 
 def message_reader(message, response, request):
@@ -38,13 +39,15 @@ def message_reader(message, response, request):
     whole_message = request_message[s]
     outputs.append(s)
     for lines in whole_message:
-        if lines != 
-        #3.for each line in whole_message:
-            #4.if not in correct format: "GET /filename HTTP/1.0"
-                response_messages{s} += "HTTP/1.0 400 Bad Request"
+        if not re.search("GET /* HTTP/1.0", lines):
+            response_messages{s} += "HTTP/1.0 400 Bad Request"
+            break
+        else:
+            response_messages{s} += "HTTP/1.0 200 OK"
+            if re.search("Connection: Keep-alive", lines):
             else:
-                #5. response messages with more oomf
-                response_messages{s} += "HTTP/1.0 200 OK"
+            
+            
 
 
 
