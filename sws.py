@@ -27,11 +27,12 @@ def listen_for_sockets(server):
             else:
                 message = s.recv(1024).decode()
             if message:
-                message_reader(message, response_messages, request_message)
+                message_reader(s,message, response_messages, request_message)
+                server.close()
                 break
 
 
-def message_reader(message, response, request):
+def message_reader(s, message, response, request):
     limit_string_1 = "\r\n\r\n"
     limit_string_2 ="\n\n"
     while message != limit_string_1 or message != limit_string_2:
@@ -44,10 +45,10 @@ def message_reader(message, response, request):
             break
         else:
             response_messages{s} += "HTTP/1.0 200 OK"
-            if re.search("Connection: Keep-alive", lines):
+            if re.search("Connection:\s?Keep-alive", lines, re.IGNORECASE):
             else:
-            
-            
+
+
 
 
 
