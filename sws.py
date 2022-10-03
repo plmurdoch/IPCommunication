@@ -28,9 +28,14 @@ def listen_for_sockets(s):
             else:
                 socket_reader(sock, input_storage, request_message, response_messages, outputs)
         for sock in writable:
-            socket_writer(sock):
+            socket_writer(sock)
+            outputs.remove(sock)
         for sock in exceptional:
-            error_handle(sock)
+            input_storage.remove(sock)
+            if sock in outputs:
+                outputs.remove(sock)
+            sock.close()
+            
 
 
 def new_connection(socket, inputs):
@@ -42,11 +47,21 @@ def new_connection(socket, inputs):
 def socket_reader(socket, input_storage, request_message, response_messages, outputs):
     message = socket.recv(1024).decode()
     if message:
-        whole_message = parse_message(socket, message, request_message)
-        if socket not in outputs:
-            outputs.append(socket)
-        for lines in whole_message:
-            filter_message(socket, lines, response_messages)
+        if not re.search("GET /* HTTP/1.0", message):
+            response_messages{socket} += "HTTP/1.0 400 Bad Request\nConnection: Close\n"
+            if socket not in outputs:
+                outputs.append(socket)
+            input_storage.remove(socket)
+            socket.close()
+        else:
+            whole_message = parse_message(socket, message, request_message)
+            if socket not in outputs:
+                outputs.append(socket)
+            for lines in whole_message:
+                keep_alive = file_exist(socket, lines, response_messages)
+                if keep_alive is 0:
+                    input_storage.remove(socket)
+                    socket.close()
     else:
         if socket in outputs:
             outputs.remove(socket)
@@ -64,19 +79,28 @@ def parse_message(sock, mess, request):
 
 #Editing here
 #Reference site: http://pymotw.com/3/select/
-def filter_message(sock, string, response):   
-    if not re.search("GET /* HTTP/1.0", lines):
-        response_messages{sock} += "HTTP/1.0 400 Bad Request"
-    else:
-        response_messages{sock} += "HTTP/1.0 200 OK"
-        if re.search("Connection:\s?Keep-alive", lines, re.IGNORECASE):
+def file_exist(sock, string, response):
+        left_buf, file_buf, right_buf = string.split(" ")
+        file_name = file_buf[1:]
+        file = open(file_name, "r")
+        if file:
+            response{sock} += "HTTP/1.0 200 OK\n"
+            lines = file.readlines()
+            while lines:
+                response{sock}+= lines
+                lines = file.readlines()
         else:
-            sock.close()
+            response{sock} += "HTTP/1.0 404 Not Found"
+        if not re.search("Connection:\s?Keep-alive", string, re.IGNORECASE):
+            return 0
+        else:
+            response{sock} += "Connection: Keep-alive\n"
+            return 1
     
     
-def socket_writer(socket):
-
-def error_handler(socket):
+def socket_writer(socket, response):
+    message = response{socket}.encode()
+    socket.send(message)
 
 
 
@@ -87,7 +111,7 @@ def main():
         sys.exit(1)
     ip_addy = sys.argv[1]
     port_num = sys.argv[2]
-    open_simple_web_server(ip_addy, port_num)
+    open_simple_web_server(ip_add, port_num)
 
 if __name__ == "__main__":
     main()
