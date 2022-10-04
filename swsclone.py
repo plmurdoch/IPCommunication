@@ -52,6 +52,7 @@ def socket_reader(socket, input_storage, request_message, response_messages, out
     if message:
         request = []
         while message:
+            request_log(message.decode(), socket)
             request.append(message.decode())
             if request[len(request-1)] == '\r\n' and request[len(request-2)] =='\r\n':
                 break
@@ -105,12 +106,13 @@ def response_header(sock, string, response):
 
 
 
-#create response log in sws time: ip:port request; response
-def response_log(socket, request, response):
+#create request log in sws time: ip:port request; response
+def request_log(mess, socket):
     ip, port_num = socket.getpeername()
     string_time = time.strftime("%a %b %d, %H:%M:%S %Z %Y: ", time.localtime())
     print(string_time+ip+":"+port_num)
 
+#create response log in sws after request processed
 
 
 #See more info on handling writer sockets.
