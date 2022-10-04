@@ -52,7 +52,7 @@ def socket_reader(socket, input_storage, request_message, response_messages, out
     if message:
         request = []
         while message:
-            request = request.append(message.decode())
+            request.append(message.decode())
             if request[len(request-1)] == '\r\n' and request[len(request-2)] =='\r\n':
                 break
             elif request[len(request-1)] == '\n' and request[len(request-2)] =='\n':
@@ -69,8 +69,10 @@ def socket_reader(socket, input_storage, request_message, response_messages, out
             #it does not send to request queue before getting connection data
             if html_file_data:
                 file_data = html_file_data
-                if not re.search("Connection:\s?Keep-alive", lines, re.IGNORECASE):
-                request_message[socket].put(html_file_data)
+            if file_data != "":
+                if not re.search("GET /.* HTTP/1.0", lines):
+                    request_message[socket].put(file_data)
+                    file_data = ""
     else:
         if socket in outputs:
             outputs.remove(socket)
@@ -103,11 +105,11 @@ def response_header(sock, string, response):
 
 
 
-#create response log in sws
+#create response log in sws time: ip:port request; response
 def response_log(socket, request, response):
     ip, port_num = socket.getpeername()
     string_time = time.strftime("%a %b %d, %H:%M:%S %Z %Y: ", time.localtime())
-    print(string_time+ip+" : "+port_num)
+    print(string_time+ip+":"+port_num)
 
 
 
