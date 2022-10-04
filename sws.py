@@ -46,7 +46,8 @@ def new_connection(socket, inputs, response, request):
     connect.settimeout(60)
     
     
-
+#Outputting too many lines 
+#Fix formatting errors should go: HTTP OK or 404 not etc. then connection declaration, then file.
 def socket_reader(socket, input_storage, request_message, response_messages, outputs):
     message = socket.recv(1024)
     if message:
@@ -67,7 +68,7 @@ def socket_reader(socket, input_storage, request_message, response_messages, out
                 outputs.append(socket)
             keep_alive = file_exist(socket, request, response_messages)
             if keep_alive == 0:
-                response_messages[socket].put("Connection: Close\r\n\r\n")
+               
                 input_storage.remove(socket)
             else:
                 socket_reader(socket, input_storage, request_message, response_messages, outputs)
@@ -77,32 +78,38 @@ def socket_reader(socket, input_storage, request_message, response_messages, out
             outputs.remove(socket)
         socket.close()
 
-
+#
 def file_exist(sock, string, response):
-        
         file_buf= re.search('GET /(.+?) HTTP/1.0', string)
         file_name = file_buf.group(1)
         file = open(file_name, "r")
+        keep_alive = 0
+        
         if file:
             response[sock].put("HTTP/1.0 200 OK\n")
+            if not re.search("Connection:\s?Keep-alive", string, re.IGNORECASE):
+                response[sock].put("Connection: Close\r\n\r\n")
+                keep_alive = 0
+            else:
+                response[sock].put("Connection: Keep-alive\r\n\r\n")
+                keep_alive = 1
             lines = file.readlines()
             while lines:
                 response[sock].put(lines)
                 lines = file.readlines()
         else:
             response[sock].put("HTTP/1.0 404 Not Found")
-        if not re.search("Connection:\s?Keep-alive", string, re.IGNORECASE):
-            return 0
-        else:
-            response[sock].put("Connection: Keep-alive\r\n\r\n")
-            return 1
-    
+        return keep_alive
+       
+            
+
+#create response log in sws 
 def response_log(socket, request, response):
     ip, port_num = socket.getpeername()
     print(time.strftime("%a %b %d, %H:%M:%S %Z %Y:", time.localtime())+ip+":"+port_num)
     
     
-    
+#See more info on handling writer sockets.
 def socket_writer(socket, response):
     message = response[socket].get()
     for lines in message:  
