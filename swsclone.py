@@ -46,7 +46,6 @@ def new_connection(socket, inputs, response, request):
     connect.settimeout(60)
 
 
-#Outputting too many lines
 #Fix formatting errors should go: HTTP OK or 404 not etc. then connection declaration, then file.
 def socket_reader(socket, input_storage, request_message, response_messages, outputs):
     message = socket.recv(1024)
@@ -63,9 +62,14 @@ def socket_reader(socket, input_storage, request_message, response_messages, out
         request_message[socket].put(request)
         if socket not in outputs:
             outputs.append(socket)
+        file_data = ""
         for lines in request:
             html_file_data = response_header(socket, lines, response_messages)
+            #does not change the position of the html_file_data, need something to make sure
+            #it does not send to request queue before getting connection data
             if html_file_data:
+                file_data = html_file_data
+                if not re.search("Connection:\s?Keep-alive", lines, re.IGNORECASE):
                 request_message[socket].put(html_file_data)
     else:
         if socket in outputs:
@@ -104,7 +108,7 @@ def response_log(socket, request, response):
     ip, port_num = socket.getpeername()
     string_time = time.strftime("%a %b %d, %H:%M:%S %Z %Y: ", time.localtime())
     print(string_time+ip+" : "+port_num)
-    
+
 
 
 #See more info on handling writer sockets.
