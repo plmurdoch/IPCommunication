@@ -21,15 +21,14 @@ def listen_for_sockets(s):
     response_messages = {}
     request_message = {}
     while input_storage:
-        readable, writable, exceptional = select.select(input_storage, outputs, input_storage)
+        readable, writable, exceptional = select.select(input_storage, outputs, input_storage, 60)
         for sock in readable:
             if sock is s:
-                new_connection(sock, input_storage)
+                new_connection(sock, input_storage, response_messages, request_message)
             else:
                 socket_reader(sock, input_storage, request_message, response_messages, outputs)
         for sock in writable:
-            socket_writer(sock)
-            outputs.remove(sock)
+            socket_writer(sock, response_messages)
         for sock in exceptional:
             input_storage.remove(sock)
             if sock in outputs:
@@ -38,69 +37,76 @@ def listen_for_sockets(s):
             
 
 
-def new_connection(socket, inputs):
+def new_connection(socket, inputs, response, request):
     connect, address = socket.accept()
     connect.setblocking(0)
     inputs.append(connect)
+    response[connect] = queue.Queue()
+    request[connect] = queue.Queue()
+    connect.settimeout(60)
+    
     
 
 def socket_reader(socket, input_storage, request_message, response_messages, outputs):
-    message = socket.recv(1024).decode()
+    message = socket.recv(1024)
     if message:
-        if not re.search("GET /* HTTP/1.0", message):
-            response_messages{socket} += "HTTP/1.0 400 Bad Request\nConnection: Close\n"
+        request = ""
+        while message:
+            request = request + message.decode()
+            if message.find(b'\n') == 0 or message.find(b'\r\n') == 0:
+                break
+            else:
+                message = socket.recv(1024)
+        request_message[socket].put(request)
+        if not re.search("GET /.* HTTP/1"+r"\."+"0", request):
+            response_messages[socket].put("HTTP/1.0 400 Bad Request\r\nConnection: Close\r\n\r\n")
             if socket not in outputs:
                 outputs.append(socket)
-            input_storage.remove(socket)
-            socket.close()
         else:
-            whole_message = parse_message(socket, message, request_message)
             if socket not in outputs:
                 outputs.append(socket)
-            for lines in whole_message:
-                keep_alive = file_exist(socket, lines, response_messages)
-                if keep_alive is 0:
-                    input_storage.remove(socket)
-                    socket.close()
+            keep_alive = file_exist(socket, request, response_messages)
+            if keep_alive == 0:
+                response_messages[socket].put("Connection: Close\r\n\r\n")
+                input_storage.remove(socket)
+            else:
+                socket_reader(socket, input_storage, request_message, response_messages, outputs)
+        response_log(socket, request_message, response_messages)
     else:
         if socket in outputs:
             outputs.remove(socket)
-        input_storage.remove(socket)
         socket.close()
 
 
-def parse_message(sock, mess, request):
-    limit_string_1 = "\r\n\r\n"
-    limit_string_2 ="\n\n"
-    while mess != limit_string_1 or mess != limit_string_2:
-        request[sock] = request[sock] + mess
-    whole = request[sock]
-    return whole
-
-#Editing here
-#Reference site: http://pymotw.com/3/select/
 def file_exist(sock, string, response):
-        left_buf, file_buf, right_buf = string.split(" ")
-        file_name = file_buf[1:]
+        
+        file_buf= re.search('GET /(.+?) HTTP/1.0', string)
+        file_name = file_buf.group(1)
         file = open(file_name, "r")
         if file:
-            response{sock} += "HTTP/1.0 200 OK\n"
+            response[sock].put("HTTP/1.0 200 OK\n")
             lines = file.readlines()
             while lines:
-                response{sock}+= lines
+                response[sock].put(lines)
                 lines = file.readlines()
         else:
-            response{sock} += "HTTP/1.0 404 Not Found"
+            response[sock].put("HTTP/1.0 404 Not Found")
         if not re.search("Connection:\s?Keep-alive", string, re.IGNORECASE):
             return 0
         else:
-            response{sock} += "Connection: Keep-alive\n"
+            response[sock].put("Connection: Keep-alive\r\n\r\n")
             return 1
+    
+def response_log(socket, request, response):
+    ip, port_num = socket.getpeername()
+    print(time.strftime("%a %b %d, %H:%M:%S %Z %Y:", time.localtime())+ip+":"+port_num)
+    
     
     
 def socket_writer(socket, response):
-    message = response{socket}.encode()
-    socket.send(message)
+    message = response[socket].get()
+    for lines in message:  
+        socket.send(lines.encode())
 
 
 
@@ -109,8 +115,8 @@ def main():
     if len(sys.argv) < 3:
         print("Use proper syntax:",sys.argv[0]," ip_address port_number")
         sys.exit(1)
-    ip_addy = sys.argv[1]
-    port_num = sys.argv[2]
+    ip_add = sys.argv[1]
+    port_num = int(sys.argv[2])
     open_simple_web_server(ip_add, port_num)
 
 if __name__ == "__main__":
