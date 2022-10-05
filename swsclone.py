@@ -53,22 +53,48 @@ def new_connection(socket, inp, response, request):
 
 def socket_reader(socket, input_storage, response_messages, output, request_message):
     mess = socket.recv(1024)
-    if mess:
-        request = []
+    if re.search('\n\n', mess) or re.search('\r\n\r\n',mess):
+        request_multi = []
         file_exist = ""
         keep_count = 0
         queue_for_break = 0
-        ls = mess.splitlines()
-        for message in ls:
-            request.append(message.decode())
+        ls = mess.splitlines(keepends = True)
+        for lines in ls:
+            request_multi.append(lines.decode())
             if request[len(request)-1] == '\r\n' and  re.search(r'\r\n',request[len(request)-2]):
                 queue_for_break = 1
             elif request[len(request)-1] == '\n' and re.search(r'\n',request[len(request)-2]):
                 queue_for_break = 1
             if keep_count == 0:
-                file_exist = response_header(socket, message.decode(), response_messages)
+                file_exist = response_header(socket, lines.decode(), response_messages)
                 keep_count = 1
-                request_message[socket].put(message.decode())
+                request_message[socket].put(lines.decode())
+                if not file_exist and queue_for_break == 0:
+                    response_messages[socket].put("Connection: Close\r\n\r\n")  
+                    break
+            else:
+                keep_alive(socket, lines.decode(), response_messages)
+                html_file(socket, file_exist, response_messages)
+                file_exist = ""
+                keep_count = 0
+        if socket not in output:
+            output.append(socket)
+    elif mess:
+        request = []
+        file_exist = ""
+        keep_count = 0
+        queue_for_break = 0
+        ls = mess.splitlines()
+        while mess:
+            request.append(mess.decode())
+            if request[len(request)-1] == '\r\n' and  re.search(r'\r\n',request[len(request)-2]):
+                queue_for_break = 1
+            elif request[len(request)-1] == '\n' and re.search(r'\n',request[len(request)-2]):
+                queue_for_break = 1
+            if keep_count == 0:
+                file_exist = response_header(socket, mess.decode(), response_messages)
+                keep_count = 1
+                request_message[socket].put(mess.decode())
                 if not file_exist and queue_for_break == 0:
                     response_messages[socket].put("Connection: Close\r\n\r\n")  
                     break
@@ -79,7 +105,7 @@ def socket_reader(socket, input_storage, response_messages, output, request_mess
             if queue_for_break == 1:
                 break
             else:
-                message = socket.recv(1024)
+                mess = socket.recv(1024)
         if socket not in output:
             output.append(socket)
         
