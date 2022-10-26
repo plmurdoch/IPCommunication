@@ -5,7 +5,7 @@ import queue
 import time
 import re
 
-class rdp_sender:
+class rdp_send:
     def __init__(self):
         self.state = "closed"
     def __send(self):
@@ -42,9 +42,11 @@ class rdp_sender:
     def getstate(self):
         return state
 
-class rdp_receiver:
+class rdp_receive:
     def __init__(self):
         self.state = "closed"
+    def getstate(self):
+        return state
     
     
 def udp_initializer(ip_ad, port, read, write):
@@ -59,24 +61,29 @@ def socket_listener(udp):
     send_buf =[]
     rcv_buf = []
     inputs = [udp]
+    timeout = 60 
     while inputs:
-        readable, writable, exceptional = select.select(inputs, inputs, inputs, 60)
+        readable, writable, exceptional = select.select(inputs, inputs, inputs, timeout)
         if udp in readable:
-            #receive data and append into rcv_buf
-            #if message not recognized:
-                #Write rst packet into snd_buf
-            #if message in rcv_buf complete:
-                #If message is ACK:
-                    #rdp_sender.rcv_ack(message)
-                #Else:
-                    #Rdp_receiver.rcv_data(message)
+            message_find(udp, send_buf, rcv_buf)
         if udp in writable:
-            bytes_send = udp_sock.send(send_buf)
+            bytes_send = udp.send(send_buf)
         if timeout:
             if rdp_sender.getstate() == "closed" and rdp_receiver.getstate() =="closed"
-                break
-            rdp_sender.timeout()
+            break
+            # rdp_sender.timeout()
 
+def message_find(udp, send, rcv):
+    temp, addr = udp.recvfrom(1024)
+    rcv_buf.append(temp.decode())
+    #if message not recognized:
+        #Write rst packet into snd_buf
+    #if message in rcv_buf complete:
+        #If message is ACK:
+            #rdp_sender.rcv_ack(message)
+        #Else:
+            #Rdp_receiver.rcv_data(message)
+    
 def main():
     if len(sys.argv) < 5:
         print("Use proper syntax:",sys.argv[0]," ip_address port_number read_file_name write_file_name")
