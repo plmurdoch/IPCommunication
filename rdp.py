@@ -4,7 +4,11 @@ import sys
 import queue
 import time
 import re
-
+#Need to implement:
+# -acknowledgment number tracking
+# -Window tracking
+# -File packet partitioning
+# -Account for loss of packets
 class rdp_send:
     def __init__(self):
         self.state = "closed"
@@ -45,11 +49,8 @@ class rdp_receive:
         self.state = "closed"
     def getstate(self):
         return state
-    def recieve (self, send_state):
-        if send_state == "syn-sent":
-            
     def rcv_data(self, message):
-        #packet handling
+        #ACK sending
     
     
 def udp_initializer(ip_ad, port, read, write):
@@ -91,6 +92,7 @@ def socket_udp(udp):
 def separate_by_bytes(read):
     byte_size = 1024
     list_bytes = []
+    file = open(read)
     for i in range(0, len(read), byte_size):
         list_bytes.append(read[i:i+byte_size])
     return list_bytes
