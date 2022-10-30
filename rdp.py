@@ -10,16 +10,14 @@ class rdp_send:
         self.state = "closed"
     def __send(self):
         if self.state == "syn-sent":
-        #Write SYN rdp packet into send_buf
+            snd_buf.append("SYN\nSequence: 0\nLength: 0\n")
         if self.state == "open":
             #Write the available window of DAT rdp packets into send_buf
             #If all data has been sent, call self.close()
         if self.state ="FIN-send":
             #Write FIN rdp packet into send-buf
     def open(self, snd_buf):
-        snd_buf.append("SYN")
-        snd_buf.append("Sequence: 0")
-        snd_buf.append("Length: 0")
+        snd_buf.append("SYN\nSequence: 0\nLength: 0\n")
         self.state = "syn-sent"
     def rcv_ack(self, mess):
         if self.state == "syn-sent":
@@ -47,6 +45,11 @@ class rdp_receive:
         self.state = "closed"
     def getstate(self):
         return state
+    def recieve (self, send_state):
+        if send_state == "syn-sent":
+            
+    def rcv_data(self, message):
+        #packet handling
     
     
 def udp_initializer(ip_ad, port, read, write):
@@ -54,35 +57,43 @@ def udp_initializer(ip_ad, port, read, write):
     udp_sock.setblocking(0)
     udp_address = (ip_ad, port)
     udp_sock.bind(udp_address)
-    udp_sock.listen(5)
-    socket_listener(udp_sock)
+    byte_list = separate_by_bytes(read)
+    socket_udp(udp_sock)
     
-def socket_listener(udp):
-    send_buf =[]
-    rcv_buf = []
-    inputs = [udp]
+def socket_udp(udp):
     timeout = 60 
-    while inputs:
-        readable, writable, exceptional = select.select(inputs, inputs, inputs, timeout)
+    while:
+        readable, writable, exceptional = select.select([udp], [udp], [udp], timeout)
         if udp in readable:
-            message_find(udp, send_buf, rcv_buf)
+            data = udp.recv(1024)
+            temp = ""
+            while data:
+                temp = temp+data.decode()
+                data = udp.recv(1024)
+            rcv_buf.append(temp)
+            if not re.search(".*\\nSequence:.*\\nLength:.*\\n", temp) 
+            and not re.search(".*\\nAcknowledgment:.*\\nWindow:.*\\n", temp):
+                #Write rst paket into snd_buf
+            else:
+                if re.search("ACK",temp):
+                    rdp_sender.rcv_ack(message)
+                else:
+                    rdp_receiver.rcv_data(message)
+                    
         if udp in writable:
-            bytes_send = udp.send(send_buf)
+            bytes_send = udp.send(send_buf.encode())
         if timeout:
-            if rdp_sender.getstate() == "closed" and rdp_receiver.getstate() =="closed"
-            break
+            if rdp_sender.getstate() == "closed" and rdp_receiver.getstate() =="closed":
+                break
             # rdp_sender.timeout()
 
-def message_find(udp, send, rcv):
-    temp, addr = udp.recvfrom(1024)
-    rcv_buf.append(temp.decode())
-    #if message not recognized:
-        #Write rst packet into snd_buf
-    #if message in rcv_buf complete:
-        #If message is ACK:
-            #rdp_sender.rcv_ack(message)
-        #Else:
-            #Rdp_receiver.rcv_data(message)
+
+def separate_by_bytes(read):
+    byte_size = 1024
+    list_bytes = []
+    for i in range(0, len(read), byte_size):
+        list_bytes.append(read[i:i+byte_size])
+    return list_bytes
     
 def main():
     if len(sys.argv) < 5:
