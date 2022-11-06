@@ -56,7 +56,7 @@ class rdp_receive:
     def getstate(self):
         return self.state
     def rcv_data(self, message):
-        if re.search("SYN", message):
+        if re.search("SYN", message):  
             return "ACK\nAcknowledgment: 1\nWindow: 1024\n"
         if re.search("DAT", message):
             print('PAYLOAD Reciever')
@@ -81,11 +81,10 @@ def socket_udp(udp):
     while True:
         readable, writable, exceptional = select.select([udp], [udp], [udp], timeout)
         if udp in readable:
-            data,address = udp.recvfrom(1024)
+            data,address = udp.recvfrom(1060)
             recv_buf = data.decode()
-            #loop back if within window
             if not re.search(".*\\nSequence:.*\\nLength:.*\\n", recv_buf) and not re.search(".*\\nAcknowledgment:.*\\nWindow:.*\\n", recv_buf):
-                send_buf.append("RST\nSequence: 0\nLength: 0\n")
+                send_buf = "RST\nSequence: 0\nLength: 0\n"
             else:
                 if re.search("ACK",recv_buf):
                     send_buf = rdp_sender.rcv_ack(recv_buf)
@@ -94,7 +93,6 @@ def socket_udp(udp):
                     
                     
         if udp in writable:
-            print(send_buf)
             bytes_send = udp.sendto(send_buf.encode(),udp.getsockname())
         if timeout:
             if rdp_sender.getstate() == "closed" and rdp_receiver.getstate() =="closed":
@@ -109,7 +107,8 @@ def separate_by_bytes(read):
     for i in range(0, len(read), byte_size):
         list_bytes.append(read[i:i+byte_size])
     return list_bytes
-    
+
+
 def main():
     if len(sys.argv) < 5:
         print("Use proper syntax:",sys.argv[0]," ip_address port_number read_file_name write_file_name")
