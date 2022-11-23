@@ -6,7 +6,7 @@ import time
 import re
 def main():
     if len(sys.argv) < 5:
-        print("Use proper syntax:",sys.argv[0]," ip_address port_number read_file_name write_file_name")
+        print("Use proper syntax:",sys.argv[0]," Server_ip_address server_udp_port_number server_buffer_size server_payload_length")
         sys.exit(1)
     ip_add = sys.argv[1]
     port_num = int(sys.argv[2])
