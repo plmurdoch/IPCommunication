@@ -4,6 +4,15 @@ import sys
 import queue
 import time
 import re
+
+class server_RDP:
+    def __init__(self, ip, port, buffer, payload):
+        self.ip = ip
+        self.port = port
+        self.buffer_size = buffer
+        self.payload = payload
+        self.state = "closed"
+    
 def main():
     if len(sys.argv) < 5:
         print("Use proper syntax:",sys.argv[0]," Server_ip_address server_udp_port_number server_buffer_size server_payload_length")
