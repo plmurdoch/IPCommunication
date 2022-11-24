@@ -26,15 +26,13 @@ class Client_RDP:
         length = len(HTTP_header)
         signal = "SYN\nSequence: 0\nLength: "+length+"\nAcknowledgment:-1\nWindow: \r\n"+HTTP_header
         self.send_buff.append(signal)
-    def recv_ack(self):
-    
-    def 
 
 
 def udp_initialize(client):
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     client_sock.setblocking(0)
     address = (client.ip, client.port)
+    client.init_syn()
     inputs = [client_sock]
     outputs = [client_sock]
     While True:
