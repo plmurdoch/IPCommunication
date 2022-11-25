@@ -22,10 +22,16 @@ class Client_RDP:
         HTTP_header ="GET /"
         name = client.read[0]
         HTTP_header+=name
-        HTTP_header+=" HTTP/1.0\nConnection: keep-alive\n\r\n"
+        if len(self.read) > 1:
+            HTTP_header+=" HTTP/1.0\nConnection: keep-alive\n\r\n"
+        else:
+            HTTP_header+=" HTTP/1.0\nConnection: close\n\r\n"
         length = len(HTTP_header)
-        signal = "SYN\nSequence: 0\nLength: "+length+"\nAcknowledgment:-1\nWindow: \r\n"+HTTP_header
+        signal = "SYN|DAT|ACK\nSequence: 0\nLength: "+length+"\nAcknowledgment:-1\nWindow: "+self.buffer+"\r\n"+HTTP_header
         self.send_buff.append(signal)
+    def decapsulate(self, message):
+    
+        
 
 
 def udp_initialize(client):
@@ -38,9 +44,14 @@ def udp_initialize(client):
     While True:
         readable, writable, exceptional = select.select(inputs, outputs, inputs, timeout)
         if client_sock in readable:
+            message = client_sock.recvfrom(client.buffer)
+            client.decapsulate(message)
         if client_sock in writable:
             client_sock.sendto(client.send_buff.encode(),address)
         if client_sock in exceptional:
+            sys.exit(1)
+
+
 def main():
     if len(sys.argv) < 6:
         print("Use proper syntax:",sys.argv[0]," server_ip_address udp_port_number client_buffer_size client_payload_length read_file_name write_file_name [read_file_name write_file_name]*")
