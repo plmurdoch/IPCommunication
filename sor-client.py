@@ -30,9 +30,8 @@ class Client_RDP:
         signal = "SYN|DAT|ACK\nSequence: 0\nLength: "+length+"\nAcknowledgment:-1\nWindow: "+self.buffer+"\r\n"+HTTP_header
         self.send_buff.append(signal)
     def decapsulate(self, message):
-    
         
-
+        return message
 
 def udp_initialize(client):
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -47,11 +46,15 @@ def udp_initialize(client):
             message = client_sock.recvfrom(client.buffer)
             client.decapsulate(message)
         if client_sock in writable:
-            client_sock.sendto(client.send_buff.encode(),address)
+            send_to_server(client.send_buff)
         if client_sock in exceptional:
             sys.exit(1)
 
-
+def send_to_server(sender):
+    ##sending to server function (control flow)
+    client_sock.sendto(client.send_buff.encode(),address)
+    
+  
 def main():
     if len(sys.argv) < 6:
         print("Use proper syntax:",sys.argv[0]," server_ip_address udp_port_number client_buffer_size client_payload_length read_file_name write_file_name [read_file_name write_file_name]*")
