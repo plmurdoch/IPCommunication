@@ -20,13 +20,47 @@ class server_RDP:
         
     def unload_packet(self, message, send_queue):
         tokenized = message.split("\r\n")
-        if len(tokenized) == 2:
-            RDP_response(tokenized[0])
-            HTTP_response(tokenized[1])
+        if re.search('DAT', tokenized[0]):
+            response_mess = self.RDP_response(tokenized[0])
+            response_mess += self.HTTP_response(tokenized[1])
+            send_queue.put(response_mess)
         else:
-            RDP_response(tokenized[0])
-        
-    
+            self.RDP_response(tokenized[0])
+
+  
+    def RDP_response(self, rdp_mess):
+        if self.state == "closed":
+            if re.search('SYN',rdp_mess):
+                info = re.search("(.+?)\\nSequence:(.+?)\\nLength:(.+?)\\nAcknowledgment:(.+?)\\nWindow:(.+?)\\n",rdp_mess)
+                commands = info.group(1)
+                seq_num = int(info.group(2))
+                len_num = int(info.group(3))
+                ack_num = int(info.group(4))
+                win_num = int(info.group(5)) 
+                response = "ACK|SYN|DAT\nSequence: "+str(seq_num)+"\nLength: "+str(self.payload)+"\nAcknowledgment: "+str(len_num+1)+"\nWindow: "+str(win_num)+"\n\r\n"
+                self.state = "SYN-RCV"
+                return response
+ 
+ 
+    def HTTP_response(self, http_mess):
+        temp = ""
+        finder = file_finder(http_mess)
+        file_name = finder[1]
+        temp = finder[0]
+        if file_name != "":
+            temp +="Connection: keep-alive\n"
+            length = file_length(file_name)
+            temp +="Content-Length: "+str(length)+"\n\r\n"
+            file = open(file_name, "r")
+            counter = 0
+            while len(temp) <= self.payload and counter < length:
+                for i in file.readlines():
+                    for x in i:
+                        temp += x
+                        counter += 1
+            file.close()
+        return temp
+
 
 def udp_initializer(server):
     server_sock =socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -40,8 +74,8 @@ def udp_initializer(server):
         if server_sock in readable:
             data, addy = server_sock.recvfrom(server.payload)
             if addy not in server.recv_dict:
-                server.recv_dict[addy] = {}
-                server.send_dict[addy] = {}
+                server.recv_dict[addy] = queue.Queue()
+                server.send_dict[addy] = queue.Queue()
             server.unload_packet(data.decode(),server.send_dict[addy])
         if server_sock in writable:
             send_to_client(server_sock ,server.send_dict)
@@ -50,11 +84,37 @@ def udp_initializer(server):
 
 def send_to_client(socket,dictionary):
     for x in dictionary:
-        while len(dictionary[x]) != 0:
-            message = dictionary[x].dequeue()
-            socket.sendto(message.decode(), x)
+        message = dictionary[x].get()
+        socket.sendto(message.encode(), x)
  
-
+def file_finder(string):
+    file_buf= re.search('GET /(.+?) HTTP/1.0', string)
+    resp = ""
+    name = ""
+    if file_buf:
+        file_name = file_buf.group(1)
+        name = file_name
+        try:
+            file = open(file_name, "r")
+        except FileNotFoundError:
+            resp += "HTTP/1.0 404 Not Found\n"
+        else:
+            resp += "HTTP/1.0 200 OK\n"
+            file.close()
+    else:
+        resp += "HTTP/1.0 400 Bad Request\n"
+    return (resp, name)
+    
+def file_length(file_name):
+    file = open(file_name, "r")
+    length = 0
+    for i in file.readlines():
+        for x in i:
+            length += 1
+    file.close()
+    return length
+    
+    
 def main():
     if len(sys.argv) < 5:
         print("Use proper syntax:",sys.argv[0]," Server_ip_address server_udp_port_number server_buffer_size server_payload_length")

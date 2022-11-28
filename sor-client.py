@@ -20,15 +20,14 @@ class Client_RDP:
         return self.state
     def init_syn(self):
         HTTP_header ="GET /"
-        name = client.read[0]
+        name = self.read[0]
         HTTP_header+=name
-        if len(self.read) > 1:
-            HTTP_header+=" HTTP/1.0\nConnection: keep-alive\n\r\n"
-        else:
-            HTTP_header+=" HTTP/1.0\nConnection: close\n\r\n"
+        HTTP_header+=" HTTP/1.0\nConnection: keep-alive\n\r\n"
         length = len(HTTP_header)
-        signal = "SYN|DAT|ACK\nSequence: 0\nLength: "+length+"\nAcknowledgment:-1\nWindow: "+self.buffer+"\r\n"+HTTP_header
+        signal = "SYN|DAT|ACK\nSequence: 0\nLength: "+str(length)+"\nAcknowledgment:-1\nWindow: "+str(self.buffer)+"\n\r\n"+HTTP_header
         self.send_buff.append(signal)
+        self.state = "SYN-SENT"
+        
     def decapsulate(self, message):
         return message
 
@@ -39,26 +38,29 @@ def udp_initialize(client):
     client.init_syn()
     inputs = [client_sock]
     outputs = [client_sock]
-    While True:
-        readable, writable, exceptional = select.select(inputs, outputs, inputs, timeout)
+    while True:
+        readable, writable, exceptional = select.select(inputs, outputs, inputs, 1)
         if client_sock in readable:
             message = client_sock.recvfrom(client.buffer)
+            print(message)
             client.decapsulate(message)
         if client_sock in writable:
-            send_to_server(client.send_buff)
+            send_to_server(client_sock,client.send_buff, address)
         if client_sock in exceptional:
             sys.exit(1)
 
-def send_to_server(sender):
+def send_to_server(socket, sender, addy):
     ##sending to server function (control flow)
-    client_sock.sendto(client.send_buff.encode(),address)
+    for x in sender:
+        sender.remove(x)
+        socket.sendto(x.encode(),addy)
     
 #Window size that the server sends restricts the ack send size
 def main():
     if len(sys.argv) < 6:
         print("Use proper syntax:",sys.argv[0]," server_ip_address udp_port_number client_buffer_size client_payload_length read_file_name write_file_name [read_file_name write_file_name]*")
         sys.exit(1)
-    elif (len(sys,argv)%2) != 0:
+    elif (len(sys.argv)%2) != 1:
         print("Use proper syntax:",sys.argv[0]," server_ip_address udp_port_number client_buffer_size client_payload_length read_file_name write_file_name [read_file_name write_file_name]*")
         sys.exit(1)
     ip_add = sys.argv[1]
@@ -73,7 +75,7 @@ def main():
             read_file.append(sys.argv[counter])
         else:
             write_file.append(sys.argv[counter])
-        counter++
+        counter+= 1
     client = Client_RDP(ip_add, port_num, client_buff_size, client_pay_size, read_file, write_file)
     udp_initialize(client)
 
