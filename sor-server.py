@@ -13,12 +13,19 @@ class server_RDP:
         self.payload = payload
         self.send_dict = {}
         self.recv_dict = {}
-        
         self.state = "closed"
+        
     def get_state(self):
         return self.state
-    def unload_packet(self, message):
-        return message
+        
+    def unload_packet(self, message, send_queue):
+        tokenized = message.split("\r\n")
+        if len(tokenized) == 2:
+            RDP_response(tokenized[0])
+            HTTP_response(tokenized[1])
+        else:
+            RDP_response(tokenized[0])
+        
     
 
 def udp_initializer(server):
@@ -29,17 +36,24 @@ def udp_initializer(server):
     inputs = [server_sock]
     outputs = [server_sock]
     while True:
-        readable, writable, exceptional = select.select(inputs, outputs, inputs, timeout)
+        readable, writable, exceptional = select.select(inputs, outputs, inputs, 1)
         if server_sock in readable:
             data, addy = server_sock.recvfrom(server.payload)
             if addy not in server.recv_dict:
                 server.recv_dict[addy] = {}
                 server.send_dict[addy] = {}
+            server.unload_packet(data.decode(),server.send_dict[addy])
         if server_sock in writable:
-            sock.sendto(
+            send_to_client(server_sock ,server.send_dict)
         if server_sock in exceptional:
             sys.exit(1)
-            
+
+def send_to_client(socket,dictionary):
+    for x in dictionary:
+        while len(dictionary[x]) != 0:
+            message = dictionary[x].dequeue()
+            socket.sendto(message.decode(), x)
+ 
 # Upon receiving the syn entry 
 def main():
     if len(sys.argv) < 5:

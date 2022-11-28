@@ -30,7 +30,6 @@ class Client_RDP:
         signal = "SYN|DAT|ACK\nSequence: 0\nLength: "+length+"\nAcknowledgment:-1\nWindow: "+self.buffer+"\r\n"+HTTP_header
         self.send_buff.append(signal)
     def decapsulate(self, message):
-        
         return message
 
 def udp_initialize(client):
