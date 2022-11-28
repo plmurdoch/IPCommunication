@@ -54,7 +54,7 @@ def send_to_client(socket,dictionary):
             message = dictionary[x].dequeue()
             socket.sendto(message.decode(), x)
  
-# Upon receiving the syn entry 
+
 def main():
     if len(sys.argv) < 5:
         print("Use proper syntax:",sys.argv[0]," Server_ip_address server_udp_port_number server_buffer_size server_payload_length")

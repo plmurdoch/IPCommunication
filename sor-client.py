@@ -53,7 +53,7 @@ def send_to_server(sender):
     ##sending to server function (control flow)
     client_sock.sendto(client.send_buff.encode(),address)
     
-  
+#Window size that the server sends restricts the ack send size
 def main():
     if len(sys.argv) < 6:
         print("Use proper syntax:",sys.argv[0]," server_ip_address udp_port_number client_buffer_size client_payload_length read_file_name write_file_name [read_file_name write_file_name]*")
