@@ -40,6 +40,8 @@ class server_RDP:
                 response = "ACK|SYN|DAT\nSequence: "+str(seq_num)+"\nLength: "+str(self.payload)+"\nAcknowledgment: "+str(len_num+1)+"\nWindow: "+str(win_num)+"\n\r\n"
                 self.state = "SYN-RCV"
                 return response
+        else:
+            sys.exit(1)
  
  
     def HTTP_response(self, http_mess):

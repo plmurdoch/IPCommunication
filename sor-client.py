@@ -16,8 +16,12 @@ class Client_RDP:
         self.recv_buff = []
         self.send_buff = []
         self.state = "closed"
+
+
     def get_state(self):
         return self.state
+
+
     def init_syn(self):
         HTTP_header ="GET /"
         name = self.read[0]
@@ -27,9 +31,16 @@ class Client_RDP:
         signal = "SYN|DAT|ACK\nSequence: 0\nLength: "+str(length)+"\nAcknowledgment:-1\nWindow: "+str(self.buffer)+"\n\r\n"+HTTP_header
         self.send_buff.append(signal)
         self.state = "SYN-SENT"
-        
+
     def decapsulate(self, message):
-        return message
+        info = re.search("(.+?)\\nSequence:(.+?)\\nLength:(.+?)\\nAcknowledgment:(.+?)\\nWindow(.+?)\\n",message)
+        commands = info.group(1)
+        seq_num = int(info.group(2))
+        length = int(info.group(3))
+        acknowledgment = int(info.group(4))
+        Win_num = int(info.group(5))
+        
+        print(commands)
 
 def udp_initialize(client):
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -41,9 +52,8 @@ def udp_initialize(client):
     while True:
         readable, writable, exceptional = select.select(inputs, outputs, inputs, 1)
         if client_sock in readable:
-            message = client_sock.recvfrom(client.buffer)
-            print(message)
-            client.decapsulate(message)
+            message, address = client_sock.recvfrom(client.buffer)
+            client.decapsulate(message.decode())
         if client_sock in writable:
             send_to_server(client_sock,client.send_buff, address)
         if client_sock in exceptional:
