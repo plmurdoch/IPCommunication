@@ -15,32 +15,64 @@ class Client_RDP:
         self.write = write
         self.recv_buff = []
         self.send_buff = []
+        self.current_file = 0
         self.state = "closed"
 
 
     def get_state(self):
         return self.state
-
-
+    
+   
     def init_syn(self):
         HTTP_header ="GET /"
-        name = self.read[0]
+        name = self.read[self.current_file]
         HTTP_header+=name
-        HTTP_header+=" HTTP/1.0\nConnection: keep-alive\n\r\n"
+        HTTP_header+=" HTTP/1.0"
         length = len(HTTP_header)
-        signal = "SYN|DAT|ACK\nSequence: 0\nLength: "+str(length)+"\nAcknowledgment:-1\nWindow: "+str(self.buffer)+"\n\r\n"+HTTP_header
+        HTTP_header += "\n\r\n"
+        signal = "SYN|DAT|ACK\nSequence: 0\nLength: "+str(length)+"\nAcknowledgment: -1\nWindow: "+str(self.buffer)+"\n\r\n"+HTTP_header
         self.send_buff.append(signal)
         self.state = "SYN-SENT"
 
+
     def decapsulate(self, message):
-        info = re.search("(.+?)\\nSequence:(.+?)\\nLength:(.+?)\\nAcknowledgment:(.+?)\\nWindow(.+?)\\n",message)
+        info = re.search("(.+?)\\nSequence:(.+?)\\nLength:(.+?)\\nAcknowledgment:(.+?)\\nWindow:(.+?)\\n",message)
         commands = info.group(1)
         seq_num = int(info.group(2))
-        length = int(info.group(3))
+        len_no = int(info.group(3))
         acknowledgment = int(info.group(4))
         Win_num = int(info.group(5))
-        
-        print(commands)
+        command_token = commands.split('|')
+        if self.state == "SYN-SENT":
+            self.state = "Connect"
+            ind_pack = message.split("\r\n")
+            http_info = ind_pack[1]
+            length = content_length(http_info)
+            file_info = ind_pack[2]
+            file_writer(file_info, self.write[self.current_file])
+            if length < self.payload:
+                response = "FIN|ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(length)+"\nWindow: "+str(self.buffer)+"\n\r\n"
+                self.send_buff.append(response)
+                self.state = "FIN-SENT"
+            else:
+                response = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(len_no+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
+                self.send_buff.append(response)
+        elif self.state == "Connect":
+            ind_pack = message.split("\r\n")
+            file_info = ind_pack[1]
+            file_writer(file_info, self.write[self.current_file])
+            if length < self.payload:
+                response = "FIN|ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(length)+"\nWindow: "+str(self.buffer)+"\n\r\n"
+                self.send_buff.append(response)
+                self.state = "FIN-SENT"
+            else:
+                response = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(length+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
+        elif self.state == "FIN-SENT":
+            self.state = "closed"
+            resp = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment: "+str(seq_num+1)+"\nWindow "+str(Win_num)+"\n\r\n"
+            self.send_buff.append(resp)
+   
+   
 
 def udp_initialize(client):
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -55,17 +87,29 @@ def udp_initialize(client):
             message, address = client_sock.recvfrom(client.buffer)
             client.decapsulate(message.decode())
         if client_sock in writable:
-            send_to_server(client_sock,client.send_buff, address)
+            if len(client.send_buff) != 0:
+                mess = client.send_buff[0]
+              
+                client.send_buff.remove(client.send_buff[0])
+                client_sock.sendto(mess.encode(), address)
+            if client.get_state() == "closed":
+                break
         if client_sock in exceptional:
-            sys.exit(1)
+            sys.exit(0)
 
-def send_to_server(socket, sender, addy):
-    ##sending to server function (control flow)
-    for x in sender:
-        sender.remove(x)
-        socket.sendto(x.encode(),addy)
     
-#Window size that the server sends restricts the ack send size
+def file_writer(file_data, file_name):
+        file = open(file_name, "a")
+        file.write(file_data)
+        file.close()
+
+def content_length(http_mess):
+    information = re.search("(.+?)\n(.+?)\nContent-Length:(.+?)\n", http_mess)
+    length = int(information.group(3))
+    length += len(http_mess)
+    length += 1
+    return length
+    
 def main():
     if len(sys.argv) < 6:
         print("Use proper syntax:",sys.argv[0]," server_ip_address udp_port_number client_buffer_size client_payload_length read_file_name write_file_name [read_file_name write_file_name]*")
