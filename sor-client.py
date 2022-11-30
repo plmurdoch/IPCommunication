@@ -51,25 +51,28 @@ class Client_RDP:
         Win_num = int(info.group(5))
         possible_http_info = info.group(6)
         if self.state == "SYN-SENT":
-            self.state = "Connect"
-            http_info = possible_http_info.lstrip('\r\n')
-            packet_size = len(http_info)
-            write = re.search("(.+?)\\n\\r\\n(.+)",http_info, re.DOTALL)
-            file_info = write.group(2)
-            file_writer(file_info, self.write[self.current_file])
-            if packet_size < self.payload:
-                if (self.current_file+1) == len(self.read):
-                    response = "FIN|ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(packet_size+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
-                    self.send_buff.append(response)
-                    self.state = "FIN-SENT"
-                else:
-                    self.current_file += 1 
-                    header_size, header_info = self.HTTP_header()
-                    resp = "DAT|ACK\nSequence: "+str(acknowledgment+header_size)+"\nLength: "+str(header_size)+"\nAcknowledgment: "+str(len_no+seq_num)+"\nWindow: "+str(Win_num)+"\n\r\n"+header_info
-                    self.send_buff.append(resp)
+            if re.search("RST", commands):
+                self.state = "closed"
             else:
-                response = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(packet_size+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
-                self.send_buff.append(response)
+                self.state = "Connect"
+                http_info = possible_http_info.lstrip('\r\n')
+                packet_size = len(http_info)
+                write = re.search("(.+?)\\n\\r\\n(.+)",http_info, re.DOTALL)
+                file_info = write.group(2)
+                file_writer(file_info, self.write[self.current_file])
+                if packet_size < self.payload:
+                    if (self.current_file+1) == len(self.read):
+                        response = "FIN|ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(len_no+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
+                        self.send_buff.append(response)
+                        self.state = "FIN-SENT"
+                    else:
+                        self.current_file += 1 
+                        header_size, header_info = self.HTTP_header()
+                        resp = "DAT|ACK\nSequence: "+str(acknowledgment+header_size)+"\nLength: "+str(header_size)+"\nAcknowledgment: "+str(len_no+seq_num)+"\nWindow: "+str(Win_num)+"\n\r\n"+header_info
+                        self.send_buff.append(resp)
+                else:
+                    response = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(packet_size+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
+                    self.send_buff.append(response)
         elif self.state == "Connect":
             file_info = possible_http_info[2:]
             file_writer(file_info, self.write[self.current_file])
@@ -103,11 +106,13 @@ def udp_initialize(client):
         readable, writable, exceptional = select.select(inputs, outputs, inputs, 1)
         if client_sock in readable:
             message, address = client_sock.recvfrom(client.buffer)
+            receive_timestamps(message.decode())
             client.decapsulate(message.decode())
         if client_sock in writable:
             if len(client.send_buff) != 0:
                 mess = client.send_buff[0]
                 client.send_buff.remove(client.send_buff[0])
+                send_timestamps(mess)
                 client_sock.sendto(mess.encode(), address)
             if client.get_state() == "closed":
                 break
@@ -126,7 +131,39 @@ def content_length(http_mess):
     length += len(http_mess)
     length += 1
     return length
-    
+
+def receive_timestamps(message):
+    time_string = time.strftime("%a %d %b %H:%M:%S %Z %Y", time.localtime())
+    info = re.search("(.+?)\\n(.+?)\\n(.+?)\\n(.+?)\\n(.+?)\\n", message)
+    command = info.group(1)
+    header_1 = info.group(2)
+    header_2 = info.group(3)
+    header_3 = info.group(4)
+    header_4 = info.group(5)
+    temp = command.split('|')
+    if len(temp) > 2:
+        first = temp[0]
+        second = temp[1]
+        third = temp[2]
+        command_1 = second+"|"+first
+        command_2 = third+"|"+first
+        info = re.search("Sequence: (.+?)", header_1)
+        seq_no = int(info.group(1))
+        print(str(time_string)+": Receive; "+command_1+"; "+header_1+"; Length: 0; Acknowledgment: 1; "+header_4)
+        print(str(time_string)+": Receive; "+command_2+"; Sequence: "+str(seq_no+1)+"; "+header_2+"; "+header_3+"; "+header_4)
+    else:
+        print(str(time_string)+": Receive; "+command+"; "+header_1+"; "+header_2+"; "+header_3+"; "+header_4)
+
+def send_timestamps(message):
+    time_string = time.strftime("%a %d %b %H:%M:%S %Z %Y", time.localtime())
+    info = re.search("(.+?)\\n(.+?)\\n(.+?)\\n(.+?)\\n(.+?)\\n", message)
+    command = info.group(1)
+    header_1 = info.group(2)
+    header_2 = info.group(3)
+    header_3 = info.group(4)
+    header_4 = info.group(5)
+    print(str(time_string)+": Send; "+command+"; "+header_1+"; "+header_2+"; "+header_3+"; "+header_4)
+  
 def main():
     if len(sys.argv) < 6:
         print("Use proper syntax:",sys.argv[0]," server_ip_address udp_port_number client_buffer_size client_payload_length read_file_name write_file_name [read_file_name write_file_name]*")

@@ -22,9 +22,11 @@ class server_RDP:
         
     def unload_packet(self, message, send_queue, address):
         tokenized = message.split("\r\n")
-        if re.search('DAT', tokenized[0]) and self.state == "closed":
+        if re.search('DAT', tokenized[0]):
+            temp = self.HTTP_response(tokenized[1],address)
             response_mess = self.RDP_response(tokenized[0])
-            response_mess += self.HTTP_response(tokenized[1],address)
+            if not re.search('RST', response_mess):
+                response_mess += temp
             send_queue.put(response_mess)
         else:
             response = self.RDP_response(tokenized[0])
@@ -39,10 +41,18 @@ class server_RDP:
                 seq_num = int(info.group(2))
                 len_num = int(info.group(3))
                 ack_num = int(info.group(4))
-                win_num = int(info.group(5)) 
-                response = "ACK|SYN|DAT\nSequence: "+str(seq_num)+"\nLength: "+str(self.payload)+"\nAcknowledgment: "+str(len_num+1)+"\nWindow: "+str(win_num)+"\n\r\n"
-                self.state = "SYN-RCV"
-                return response
+                win_num = int(info.group(5))
+                if win_num > self.buffer_size:
+                    response = "RST\nSequence: "+str(seq_num)+"\nLength: 0\nAcknowledgment: "+str(ack_num)+"\nWindow: "+str(self.buffer_size)+"\n\r\n"
+                    return response
+                else:
+                    response = ""
+                    if (self.packet_num+1) == len(self.packets):
+                        response = "ACK|SYN|DAT\nSequence: "+str(seq_num)+"\nLength: "+str(len(self.packets[self.packet_num]))+"\nAcknowledgment: "+str(len_num+1)+"\nWindow: "+str(win_num)+"\n\r\n"
+                    else:
+                        response = "ACK|SYN|DAT\nSequence: "+str(seq_num)+"\nLength: "+str(self.payload)+"\nAcknowledgment: "+str(len_num+1)+"\nWindow: "+str(win_num)+"\n\r\n"
+                    self.state = "SYN-RCV"
+                    return response
         elif self.state == "SYN-RCV":
             info = re.search("(.+?)\\nSequence:(.+?)\\nLength:(.+?)\\nAcknowledgment:(.+?)\\nWindow:(.+?)\\n",rdp_mess)
             commands = info.group(1)
@@ -51,17 +61,26 @@ class server_RDP:
             ack_num = int(info.group(4))
             win_num = int(info.group(5))
             if re.search('FIN',commands):
-                response = "FIN|ACK\nSequence: "+str(ack_num)+"\nLength: 0\nAcknowledgment: "+str(seq_num+1)+"\nWindow: "+str(win_num)+"\n\r\n"
-                self.state = "CON-FIN-RCV"
-                return response
-            else:
-                self.packet_num += 1
-                if self.packets[self.packet_num] == len(self.packets):
-                    resp = "DAT|ACK\nSequence: "+str(ack_num)+"\nLength: "+str(len(self.packets[self.packet_num]))+"\nAcknowledgment: "+str(seq_num)+"\nWindow: "+str(win_num)+"\n\r\n"+self.packets[self.packet_num]
-                    return resp
+                if win_num > self.buffer_size:
+                    response = "RST\nSequence: "+str(seq_num)+"\nLength: 0\nAcknowledgment: "+str(ack_num)+"\nWindow: "+str(self.buffer_size)+"\n\r\n"
+                    return response
                 else:
-                    resp = "DAT|ACK\nSequence: "+str(ack_num)+"\nLength: "+str(self.payload)+"\nAcknowledgment: "+str(seq_num)+"\nWindow: "+str(win_num)+"\n\r\n"+self.packets[self.packet_num]
-                    return resp
+                    response = "FIN|ACK\nSequence: "+str(ack_num)+"\nLength: 0\nAcknowledgment: "+str(seq_num+1)+"\nWindow: "+str(win_num)+"\n\r\n"
+                    self.state = "CON-FIN-RCV"
+                    return response
+            else:
+                if win_num > self.buffer_size:
+                    response = "RST\nSequence: "+str(seq_num)+"\nLength: 0\nAcknowledgment: "+str(ack_num)+"\nWindow: "+str(self.buffer_size)+"\n\r\n"
+                    return response
+                else:    
+                    self.packet_num += 1
+                    if (self.packet_num+1) == len(self.packets):
+                        resp = "DAT|ACK\nSequence: "+str(ack_num)+"\nLength: "+str(len(self.packets[self.packet_num]))+"\nAcknowledgment: "+str(seq_num+len_num)+"\nWindow: "+str(win_num)+"\n\r\n"+self.packets[self.packet_num]
+                        self.packet_num = 0
+                        return resp
+                    else:
+                        resp = "DAT|ACK\nSequence: "+str(ack_num)+"\nLength: "+str(self.payload)+"\nAcknowledgment: "+str(seq_num+len_num)+"\nWindow: "+str(win_num)+"\n\r\n"+self.packets[self.packet_num]
+                        return resp
         elif self.state == "CON-FIN-RCV":
             if re.search('DAT',rdp_mess):
                 print("more data")
@@ -79,7 +98,7 @@ class server_RDP:
             temp +="Content-Length: "+str(length)+"\n\r\n"
             file = open(file_name, "r")
             length_http = len(temp)
-            self.packets = packetize_file(file, length_http) 
+            self.packets = packetize_file(file, length_http, self) 
             file.close()
             temp += self.packets[0]
         return temp
@@ -139,14 +158,14 @@ def file_length(file_name):
     file.close()
     return length
     
-def packetize_file(filename, length):
+def packetize_file(filename, length, server):
     file_packets = []
     data = ""
     for i in filename.readlines():
         for x in i:
             data += x
             length += 1
-            if(length %1024) == 0:
+            if(length %server.payload) == 0:
                 file_packets.append(data)
                 data = ""
     file_packets.append(data)
