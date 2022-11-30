@@ -14,13 +14,15 @@ class server_RDP:
         self.send_dict = {}
         self.recv_dict = {}
         self.state = "closed"
+        self.packet_num = 0
+        self.packets = []
         
     def get_state(self):
         return self.state
         
     def unload_packet(self, message, send_queue, address):
         tokenized = message.split("\r\n")
-        if re.search('DAT', tokenized[0]):
+        if re.search('DAT', tokenized[0]) and self.state == "closed":
             response_mess = self.RDP_response(tokenized[0])
             response_mess += self.HTTP_response(tokenized[1],address)
             send_queue.put(response_mess)
@@ -53,10 +55,16 @@ class server_RDP:
                 self.state = "CON-FIN-RCV"
                 return response
             else:
-                print("here")
+                self.packet_num += 1
+                if self.packets[self.packet_num] == len(self.packets):
+                    resp = "DAT|ACK\nSequence: "+str(ack_num)+"\nLength: "+str(len(self.packets[self.packet_num]))+"\nAcknowledgment: "+str(seq_num)+"\nWindow: "+str(win_num)+"\n\r\n"+self.packets[self.packet_num]
+                    return resp
+                else:
+                    resp = "DAT|ACK\nSequence: "+str(ack_num)+"\nLength: "+str(self.payload)+"\nAcknowledgment: "+str(seq_num)+"\nWindow: "+str(win_num)+"\n\r\n"+self.packets[self.packet_num]
+                    return resp
         elif self.state == "CON-FIN-RCV":
-            self.state = "closed"
-            
+            if re.search('DAT',rdp_mess):
+                print("more data")
  
  
     def HTTP_response(self, http_mess, socket):
@@ -71,9 +79,9 @@ class server_RDP:
             temp +="Content-Length: "+str(length)+"\n\r\n"
             file = open(file_name, "r")
             length_http = len(temp)
-            packets = packetize_file(file, length_http) 
+            self.packets = packetize_file(file, length_http) 
             file.close()
-            temp += packets[0]
+            temp += self.packets[0]
         return temp
 
 
@@ -89,7 +97,6 @@ def udp_initializer(server):
         readable, writable, exceptional = select.select(inputs, outputs, inputs, 1)
         if server_sock in readable:
             data, addy = server_sock.recvfrom(server.payload)
-            print(data.decode())
             if addy not in server.recv_dict:
                 server.recv_dict[addy] = queue.Queue()
                 server.send_dict[addy] = queue.Queue()

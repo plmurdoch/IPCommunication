@@ -24,55 +24,73 @@ class Client_RDP:
     
    
     def init_syn(self):
-        HTTP_header ="GET /"
-        name = self.read[self.current_file]
-        HTTP_header+=name
-        HTTP_header+=" HTTP/1.0"
-        length = len(HTTP_header)
-        HTTP_header += "\n\r\n"
-        signal = "SYN|DAT|ACK\nSequence: 0\nLength: "+str(length)+"\nAcknowledgment: -1\nWindow: "+str(self.buffer)+"\n\r\n"+HTTP_header
+        length, HTTPheader = self.HTTP_header()
+        signal = "SYN|DAT|ACK\nSequence: 0\nLength: "+str(length)+"\nAcknowledgment: -1\nWindow: "+str(self.buffer)+"\n\r\n"+HTTPheader
         self.send_buff.append(signal)
         self.state = "SYN-SENT"
 
+    def HTTP_header(self): 
+        HTTP ="GET /"
+        name = self.read[self.current_file]
+        HTTP+=name
+        HTTP+=" HTTP/1.0"
+        if (self.current_file+1) != len(self.read):
+            HTTP += "\nConnection: keep-alive\n"
+        length = len(HTTP)
+        HTTP +="\n\r\n"
+        return (length, HTTP)
 
     def decapsulate(self, message):
-        info = re.search("(.+?)\\nSequence:(.+?)\\nLength:(.+?)\\nAcknowledgment:(.+?)\\nWindow:(.+?)\\n",message)
+        info = re.search("(.+?)\\nSequence:(.+?)\\nLength:(.+?)\\nAcknowledgment:(.+?)\\nWindow:(.+?)\\n(.+)",message, re.DOTALL)
         commands = info.group(1)
         seq_num = int(info.group(2))
+        if seq_num == 0:
+            seq_num = 1
         len_no = int(info.group(3))
         acknowledgment = int(info.group(4))
         Win_num = int(info.group(5))
-        command_token = commands.split('|')
+        possible_http_info = info.group(6)
         if self.state == "SYN-SENT":
             self.state = "Connect"
-            ind_pack = message.split("\r\n")
-            http_info = ind_pack[1]
-            length = content_length(http_info)
-            file_info = ind_pack[2]
+            http_info = possible_http_info.lstrip('\r\n')
+            packet_size = len(http_info)
+            write = re.search("(.+?)\\n\\r\\n(.+)",http_info, re.DOTALL)
+            file_info = write.group(2)
             file_writer(file_info, self.write[self.current_file])
-            if length < self.payload:
-                response = "FIN|ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(length)+"\nWindow: "+str(self.buffer)+"\n\r\n"
-                self.send_buff.append(response)
-                self.state = "FIN-SENT"
+            if packet_size < self.payload:
+                if (self.current_file+1) == len(self.read):
+                    response = "FIN|ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(packet_size+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
+                    self.send_buff.append(response)
+                    self.state = "FIN-SENT"
+                else:
+                    self.current_file += 1 
+                    header_size, header_info = self.HTTP_header()
+                    resp = "DAT|ACK\nSequence: "+str(acknowledgment+header_size)+"\nLength: "+str(header_size)+"\nAcknowledgment: "+str(len_no+seq_num)+"\nWindow: "+str(Win_num)+"\n\r\n"+header_info
+                    self.send_buff.append(resp)
             else:
-                response = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(len_no+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
+                response = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(packet_size+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
                 self.send_buff.append(response)
         elif self.state == "Connect":
-            ind_pack = message.split("\r\n")
-            file_info = ind_pack[1]
+            file_info = possible_http_info[2:]
             file_writer(file_info, self.write[self.current_file])
-            if length < self.payload:
-                response = "FIN|ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(length)+"\nWindow: "+str(self.buffer)+"\n\r\n"
-                self.send_buff.append(response)
-                self.state = "FIN-SENT"
+            packet_size = len(file_info)
+            if packet_size < self.payload:
+                if (self.current_file+1) == len(self.read):
+                    response = "FIN|ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(packet_size+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
+                    self.send_buff.append(response)
+                    self.state = "FIN-SENT"
+                else:
+                    self.current_file += 1 
+                    header_size, header_info = self.HTTP_header()
+                    resp = "DAT|ACK\nSequence: "+str(acknowledgment+header_size)+"\nLength: "+str(header_size)+"\nAcknowledgment: "+str(len_no+seq_num)+"\nWindow: "+str(Win_num)+"\n\r\n"+header_info
+                    self.send_buff.append(response)
             else:
-                response = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(length+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
+                response = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(packet_size+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
+                self.send_buff.append(response)
         elif self.state == "FIN-SENT":
             self.state = "closed"
             resp = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment: "+str(seq_num+1)+"\nWindow "+str(Win_num)+"\n\r\n"
             self.send_buff.append(resp)
-   
-   
 
 def udp_initialize(client):
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -89,7 +107,6 @@ def udp_initialize(client):
         if client_sock in writable:
             if len(client.send_buff) != 0:
                 mess = client.send_buff[0]
-              
                 client.send_buff.remove(client.send_buff[0])
                 client_sock.sendto(mess.encode(), address)
             if client.get_state() == "closed":
