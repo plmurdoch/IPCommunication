@@ -53,6 +53,7 @@ class Client_RDP:
         if self.state == "SYN-SENT":
             if re.search("RST", commands):
                 self.state = "closed"
+                self.send_buff.append("")
             else:
                 self.state = "Connect"
                 http_info = possible_http_info.lstrip('\r\n')
@@ -126,7 +127,7 @@ def udp_initialize(client):
                 client.send_buff.remove(client.send_buff[0])
                 if len(mess) != 0:
                     send_timestamps(mess)
-                    client_sock.sendto(mess.encode(), address)
+                client_sock.sendto(mess.encode(), address)
             if client.get_state() == "closed":
                 break
         if client_sock in exceptional:

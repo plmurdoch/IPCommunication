@@ -22,7 +22,7 @@ class server_RDP:
     def unload_packet(self, message, send_queue, address):
         tokenized = message.split("\r\n")
         if re.search('DAT', tokenized[0]):
-            temp = self.HTTP_response(tokenized[1],address)
+            temp = self.HTTP_response(tokenized[1],address, tokenized[0])
             response_mess = self.RDP_response(tokenized[0])
             if not re.search('RST', response_mess):
                     response_mess += temp
@@ -101,12 +101,15 @@ class server_RDP:
                 return string
  
  
-    def HTTP_response(self, http_mess, socket):
+    def HTTP_response(self, http_mess, socket, command):
         temp = ""
         finder = file_finder(http_mess)
         file_name = finder[1]
         temp = finder[0]
-        log_print(socket,http_mess, temp)
+        size_info = re.search("Window: (.+?)\\n",command)
+        size = int(size_info.group(1))
+        if self.buffer_size>= size:
+            log_print(socket,http_mess, temp)
         if file_name != "":
             temp +="Connection: keep-alive\n"
             length = file_length(file_name)
