@@ -75,25 +75,37 @@ class Client_RDP:
                     self.send_buff.append(response)
         elif self.state == "Connect":
             file_info = possible_http_info[2:]
-            file_writer(file_info, self.write[self.current_file])
             packet_size = len(file_info)
+            if re.search("HTTP/1.0 (.+?)\\nConnection: keep-alive\\nContent-Length:",file_info):
+                temp = re.search("(.+?)\\n\\r\\n(.+)", file_info, re.DOTALL)
+                if len_no < len(file_info):
+                    packet_size = len(temp.group(2))
+                file_info = temp.group(2)
+            file_writer(file_info, self.write[self.current_file])
             if packet_size < self.payload:
                 if (self.current_file+1) == len(self.read):
-                    response = "FIN|ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(packet_size+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
-                    self.send_buff.append(response)
-                    self.state = "FIN-SENT"
+                    if not re.search("RST",commands):
+                        response = "FIN|ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(packet_size+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
+                        self.send_buff.append(response)
+                        self.state = "FIN-SENT"
+                    else:
+                        self.state = "closed"
                 else:
                     self.current_file += 1 
                     header_size, header_info = self.HTTP_header()
                     resp = "DAT|ACK\nSequence: "+str(acknowledgment+header_size)+"\nLength: "+str(header_size)+"\nAcknowledgment: "+str(len_no+seq_num)+"\nWindow: "+str(Win_num)+"\n\r\n"+header_info
-                    self.send_buff.append(response)
+                    self.send_buff.append(resp)
             else:
                 response = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment:"+str(packet_size+seq_num)+"\nWindow: "+str(self.buffer)+"\n\r\n"
                 self.send_buff.append(response)
         elif self.state == "FIN-SENT":
             self.state = "closed"
-            resp = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment: "+str(seq_num+1)+"\nWindow "+str(Win_num)+"\n\r\n"
-            self.send_buff.append(resp)
+            if re.search("RST",commands):
+                resp = ""
+                self.send_buff.append(resp)
+            else:
+                resp = "ACK\nSequence: "+str(acknowledgment)+"\nLength: 0\nAcknowledgment: "+str(seq_num+1)+"\nWindow "+str(Win_num)+"\n\r\n"
+                self.send_buff.append(resp)
 
 def udp_initialize(client):
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -117,7 +129,8 @@ def udp_initialize(client):
             if client.get_state() == "closed":
                 break
         if client_sock in exceptional:
-            sys.exit(0)
+            udp_sock.close()
+            break
 
     
 def file_writer(file_data, file_name):
@@ -156,6 +169,8 @@ def receive_timestamps(message):
 
 def send_timestamps(message):
     time_string = time.strftime("%a %d %b %H:%M:%S %Z %Y", time.localtime())
+    if not re.search("(.+?)\\n(.+?)\\n(.+?)\\n(.+?)\\n(.+?)\\n", message):
+        return
     info = re.search("(.+?)\\n(.+?)\\n(.+?)\\n(.+?)\\n(.+?)\\n", message)
     command = info.group(1)
     header_1 = info.group(2)
