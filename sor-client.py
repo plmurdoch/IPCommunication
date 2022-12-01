@@ -124,12 +124,12 @@ def udp_initialize(client):
             if len(client.send_buff) != 0:
                 mess = client.send_buff[0]
                 client.send_buff.remove(client.send_buff[0])
-                send_timestamps(mess)
-                client_sock.sendto(mess.encode(), address)
+                if len(mess) != 0:
+                    send_timestamps(mess)
+                    client_sock.sendto(mess.encode(), address)
             if client.get_state() == "closed":
                 break
         if client_sock in exceptional:
-            udp_sock.close()
             break
 
     

@@ -6,12 +6,11 @@ import time
 import re
 
 class server_RDP:
-    def __init__(self, ip, port, buffer, payload):
-        self.ip = ip
-        self.port = port
+    def __init__(self, address, buffer, payload):
+        self.address = address
         self.buffer_size = buffer
         self.payload = payload
-        self.send_dict = {}
+        self.send_buff = {}
         self.recv_dict = {}
         self.state = "closed"
         self.packet_num = 0
@@ -124,32 +123,45 @@ class server_RDP:
         return temp
 
 
-def udp_initializer(server):
-    server_sock =socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server_sock.setblocking(0)
-    address = (server.ip, server.port)
-    server_sock.bind(address)
-    inputs = [server_sock]
+def udp_initializer(ip, port, buffer, payload):
+    sock =socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setblocking(0)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    address = (ip, port) 
+    sock.bind(address)
+    connections = {}
+    inputs = [sock]
     outputs = []
     client_address= ("", 0)
     while True:
         readable, writable, exceptional = select.select(inputs, outputs, inputs, 1)
-        if server_sock in readable:
-            data, addy = server_sock.recvfrom(server.payload)
-            if addy not in server.recv_dict:
-                server.recv_dict[addy] = queue.Queue()
-                server.send_dict[addy] = queue.Queue()
-                client_address = addy
-            server.unload_packet(data.decode(),server.send_dict[addy], client_address)
-            outputs.append(server_sock)
-        if server_sock in writable:
-            if client_address in server.send_dict:
-                message = server.send_dict[client_address].get()
+        if sock in readable:
+            data, addy = sock.recvfrom(payload)
+            if addy not in connections:
+                connections[addy] = rdp_connection(addy, buffer, payload)
+                connections[addy].recv_dict = queue.Queue()
+                connections[addy].send_buff = queue.Queue()
+            connections[addy].unload_packet(data.decode(),connections[addy].send_buff, connections[addy].address)
+            outputs.append(sock)
+        if sock in writable:
+            remove_element = []
+            for x in connections:
+                if connections[x].send_buff.empty():
+                    remove_element.append(x) 
+                else:
+                    message = connections[x].send_buff.get()
                 if message: 
-                    server_sock.sendto(message.encode(), client_address)
-                outputs.remove(server_sock)
-        if server_sock in exceptional:
-            server_sock.close()
+                    sock.sendto(message.encode(), x)
+            for y in remove_element:
+                del connections[y]
+            outputs.remove(sock)
+        if sock in exceptional:
+            sock.close()
+
+def rdp_connection(address, buffer_size, payload_size):
+    connection = server_RDP(address, buffer_size, payload_size) 
+    return connection
+    
 
 def file_finder(string):
     file_buf= re.search('GET /(.+?) HTTP/1.0', string)
@@ -210,9 +222,8 @@ def main():
     ip_add = sys.argv[1]
     port_num = int(sys.argv[2])
     buffer_size = int(sys.argv[3])
-    payload_size = int(sys.argv[4])
-    server = server_RDP(ip_add, port_num, buffer_size, payload_size) 
-    udp_initializer(server)
+    payload_size = int(sys.argv[4]) 
+    udp_initializer(ip_add, port_num, buffer_size, payload_size)
 
 if __name__ == "__main__":
     main()
