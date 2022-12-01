@@ -17,7 +17,7 @@ class Client_RDP:
         self.send_buff = []
         self.current_file = 0
         self.state = "closed"
-
+        self.possible_loss = ""
 
     def get_state(self):
         return self.state
@@ -110,7 +110,8 @@ class Client_RDP:
 
 def udp_initialize(client):
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    client_sock.setblocking(0)
+    client_sock.setblocking(1)
+    client_sock.settimeout(3)
     address = (client.ip, client.port)
     client.init_syn()
     inputs = [client_sock]
@@ -118,12 +119,19 @@ def udp_initialize(client):
     while True:
         readable, writable, exceptional = select.select(inputs, outputs, inputs, 1)
         if client_sock in readable:
-            message, address = client_sock.recvfrom(client.buffer)
-            receive_timestamps(message.decode())
-            client.decapsulate(message.decode())
+            try:
+                message, address = client_sock.recvfrom(client.buffer)
+            except client_sock.TimeoutError:
+                if len(client.possible_loss) != 0:
+                    send_timestamps(client.possible_loss)
+                client_sock.sendto(client.possible_loss.encode(),address)
+            else:
+                receive_timestamps(message.decode())
+                client.decapsulate(message.decode())
         if client_sock in writable:
             if len(client.send_buff) != 0:
                 mess = client.send_buff[0]
+                client.possible_loss = mess
                 client.send_buff.remove(client.send_buff[0])
                 if len(mess) != 0:
                     send_timestamps(mess)

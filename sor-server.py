@@ -15,28 +15,35 @@ class server_RDP:
         self.state = "closed"
         self.packet_num = 0
         self.packets = []
+        self.next_ack = 0
+        self.retransmit = []
+        
         
     def get_state(self):
         return self.state
         
-    def unload_packet(self, message, send_queue, address):
+    def unload_packet(self, message):
         tokenized = message.split("\r\n")
+        if len(tokenized) == 1:
+            tokenized = message.split("\n\n") #special cases as rst_test was inconsistent with its RDP and HTTP headers 
         if re.search('DAT', tokenized[0]):
-            temp = self.HTTP_response(tokenized[1],address, tokenized[0])
+            temp = self.HTTP_response(tokenized[1], tokenized[0])
             response_mess = self.RDP_response(tokenized[0])
             if not re.search('RST', response_mess):
                     response_mess += temp
-            send_queue.put(response_mess)
+            self.send_buff.put(response_mess)
         else:
             response = self.RDP_response(tokenized[0])
-            send_queue.put(response)
+            self.send_buff.put(response)
 
-  
+
     def RDP_response(self, rdp_mess):
         if self.state == "closed":
             if re.search('SYN',rdp_mess):
                 self.state = "SYN-RCV"
                 info = re.search("(.+?)\\nSequence:(.+?)\\nLength:(.+?)\\nAcknowledgment:(.+?)\\nWindow:(.+?)\\n",rdp_mess)
+                if info is None:
+                    info = re.search("(.+?)\\nSequence:(.+?)\\nLength:(.+?)\\nAcknowledgement:(.+?)\\nWindows: (.+)",rdp_mess) #special cases as rst_test was inconsistent with its RDP and HTTP headers 
                 commands = info.group(1)
                 seq_num = int(info.group(2))
                 len_num = int(info.group(3))
@@ -50,8 +57,10 @@ class server_RDP:
                     response = ""
                     if (self.packet_num+1) == len(self.packets):
                         response = "ACK|SYN|DAT\nSequence: "+str(seq_num)+"\nLength: "+str(len(self.packets[self.packet_num]))+"\nAcknowledgment: "+str(len_num+1)+"\nWindow: "+str(win_num)+"\n\r\n"
+                        self.next_ack = 1+seq_num + len(self.packets[self.packet_num])
                     else:
                         response = "ACK|SYN|DAT\nSequence: "+str(seq_num)+"\nLength: "+str(self.payload)+"\nAcknowledgment: "+str(len_num+1)+"\nWindow: "+str(win_num)+"\n\r\n"
+                        self.next_ack = 1+ seq_num + self.payload
                     return response
         elif self.state == "SYN-RCV":
             info = re.search("(.+?)\\nSequence:(.+?)\\nLength:(.+?)\\nAcknowledgment:(.+?)\\nWindow:(.+?)\\n",rdp_mess)
@@ -80,18 +89,23 @@ class server_RDP:
                         self.packet_num += 1
                         if (self.packet_num+1) == len(self.packets):
                             resp = "DAT|ACK\nSequence: "+str(ack_num)+"\nLength: "+str(len(self.packets[self.packet_num]))+"\nAcknowledgment: "+str(seq_num+len_num)+"\nWindow: "+str(win_num)+"\n\r\n"+self.packets[self.packet_num]
+                            self.next_ack = ack_num + len(self.packets[self.packet_num])
                             self.packet_num = 0
+                            self.retransmit = self.packets
                             self.packets = []
                             return resp
                         else:
                             resp = "DAT|ACK\nSequence: "+str(ack_num)+"\nLength: "+str(self.payload)+"\nAcknowledgment: "+str(seq_num+len_num)+"\nWindow: "+str(win_num)+"\n\r\n"+self.packets[self.packet_num]
+                            self.next_ack = ack_num + self.payload
                             return resp
                     else:
                         if (self.packet_num+1) == len(self.packets):
                             resp = "DAT|ACK\nSequence: "+str(ack_num)+"\nLength: "+str(len(self.packets[self.packet_num]))+"\nAcknowledgment: "+str(seq_num+len_num)+"\nWindow: "+str(win_num)+"\n\r\n"
+                            self.next_ack = ack_num + len(self.packets[self.packet_num])
                             return resp
                         else:
                             resp = "DAT|ACK\nSequence: "+str(ack_num)+"\nLength: "+str(self.payload)+"\nAcknowledgment: "+str(seq_num+len_num)+"\nWindow: "+str(win_num)+"\n\r\n"
+                            self.next_ack = ack_num + self.payload
                             return resp
         elif self.state == "FIN-SENT":
             if re.search('ACK',rdp_mess):
@@ -101,15 +115,17 @@ class server_RDP:
                 return string
  
  
-    def HTTP_response(self, http_mess, socket, command):
+    def HTTP_response(self, http_mess, command):
         temp = ""
         finder = file_finder(http_mess)
         file_name = finder[1]
         temp = finder[0]
-        size_info = re.search("Window: (.+?)\\n",command)
+        size_info = re.search("Window: (.+)\\n",command)
+        if size_info is None:
+            size_info = re.search("Windows: (.+)",command) #special cases as rst_test was inconsistent with its RDP and HTTP headers 
         size = int(size_info.group(1))
         if self.buffer_size>= size:
-            log_print(socket,http_mess, temp)
+            log_print(self.address,http_mess, temp)
         if file_name != "":
             temp +="Connection: keep-alive\n"
             length = file_length(file_name)
@@ -124,7 +140,28 @@ class server_RDP:
                 file.close()
                 temp += self.packets[0]
         return temp
-
+    
+    def occupy_buffer(self, prev_mess):
+        info = re.search("(.+?)\\nSequence:(.+?)\\nLength:(.+?)\\nAcknowledgment:(.+?)\\nWindow:(.+?)\\n",prev_mess)
+        commands = info.group(1)
+        seq_num = int(info.group(2))
+        len_num = int(info.group(3))
+        ack_num = int(info.group(4))
+        win_num = int(info.group(5))
+        self.packet_num += 1
+        if (self.packet_num+1) == len(self.packets):
+            resp = "DAT|ACK\nSequence: "+str(self.next_ack)+"\nLength: "+str(len(self.packets[self.packet_num]))+"\nAcknowledgment: "+str(seq_num+len_num)+"\nWindow: "+str(win_num)+"\n\r\n"+self.packets[self.packet_num]
+            self.next_ack = self.next_ack + len(self.packets[self.packet_num])
+            print("After comp"+self.next_ack)
+            self.packet_num = 0
+            self.retransmit = self.packets
+            self.packets = []
+            return (resp, 1)
+        else:
+            resp = "DAT|ACK\nSequence: "+str(self.next_ack)+"\nLength: "+str(self.payload)+"\nAcknowledgment: "+str(seq_num+len_num)+"\nWindow: "+str(win_num)+"\n\r\n"+self.packets[self.packet_num]
+            self.next_ack = self.next_ack + self.payload
+            print(self.next_ack)
+            return (resp , 0)
 
 def udp_initializer(ip, port, buffer, payload):
     sock =socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -144,7 +181,7 @@ def udp_initializer(ip, port, buffer, payload):
                 connections[addy] = rdp_connection(addy, buffer, payload)
                 connections[addy].recv_dict = queue.Queue()
                 connections[addy].send_buff = queue.Queue()
-            connections[addy].unload_packet(data.decode(),connections[addy].send_buff, connections[addy].address)
+            connections[addy].unload_packet(data.decode())
             outputs.append(sock)
         if sock in writable:
             remove_element = []
