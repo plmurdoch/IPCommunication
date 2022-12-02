@@ -17,8 +17,9 @@ class server_RDP:
         self.packets = []
         self.next_ack = 0
         self.retransmit = []
-        
-        
+        self.prev_recv_mess = ""
+        self.prev_sent_mess = ""
+ 
     def get_state(self):
         return self.state
         
@@ -140,28 +141,6 @@ class server_RDP:
                 file.close()
                 temp += self.packets[0]
         return temp
-    
-    def occupy_buffer(self, prev_mess):
-        info = re.search("(.+?)\\nSequence:(.+?)\\nLength:(.+?)\\nAcknowledgment:(.+?)\\nWindow:(.+?)\\n",prev_mess)
-        commands = info.group(1)
-        seq_num = int(info.group(2))
-        len_num = int(info.group(3))
-        ack_num = int(info.group(4))
-        win_num = int(info.group(5))
-        self.packet_num += 1
-        if (self.packet_num+1) == len(self.packets):
-            resp = "DAT|ACK\nSequence: "+str(self.next_ack)+"\nLength: "+str(len(self.packets[self.packet_num]))+"\nAcknowledgment: "+str(seq_num+len_num)+"\nWindow: "+str(win_num)+"\n\r\n"+self.packets[self.packet_num]
-            self.next_ack = self.next_ack + len(self.packets[self.packet_num])
-            print("After comp"+self.next_ack)
-            self.packet_num = 0
-            self.retransmit = self.packets
-            self.packets = []
-            return (resp, 1)
-        else:
-            resp = "DAT|ACK\nSequence: "+str(self.next_ack)+"\nLength: "+str(self.payload)+"\nAcknowledgment: "+str(seq_num+len_num)+"\nWindow: "+str(win_num)+"\n\r\n"+self.packets[self.packet_num]
-            self.next_ack = self.next_ack + self.payload
-            print(self.next_ack)
-            return (resp , 0)
 
 def udp_initializer(ip, port, buffer, payload):
     sock =socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -172,36 +151,43 @@ def udp_initializer(ip, port, buffer, payload):
     connections = {}
     inputs = [sock]
     outputs = []
-    client_address= ("", 0)
+    client_address= {}
+    client_number = 0
     while True:
         readable, writable, exceptional = select.select(inputs, outputs, inputs, 1)
-        if sock in readable:
-            data, addy = sock.recvfrom(payload)
+        for s in readable:
+            if s is sock:
+                new_connection = (s, inputs)
+            data, addy = s.recvfrom(payload)
             if addy not in connections:
+                client_address[s] = addy
                 connections[addy] = rdp_connection(addy, buffer, payload)
                 connections[addy].recv_dict = queue.Queue()
                 connections[addy].send_buff = queue.Queue()
-            connections[addy].unload_packet(data.decode())
-            outputs.append(sock)
-        if sock in writable:
-            remove_element = []
-            for x in connections:
-                if connections[x].send_buff.empty():
-                    remove_element.append(x) 
-                else:
-                    message = connections[x].send_buff.get()
-                if message: 
-                    sock.sendto(message.encode(), x)
-            for y in remove_element:
-                del connections[y]
-            outputs.remove(sock)
-        if sock in exceptional:
-            sock.close()
+            if connections[addy].prev_recv_mess == data.decode():
+                connections[addy].send_buff.put(connections[addy].prev_sent_mess)
+            else:
+                connections[addy].prev_recv_mess = data.decode()
+                connections[addy].unload_packet(data.decode())
+            outputs.append(s)
+        for s in writable:
+            x = client_address[s]
+            if not connections[x].send_buff.empty():
+                message = connections[x].send_buff.get()
+            if message: 
+                connections[x].prev_sent_mess = message
+                sock.sendto(message.encode(), x)
+            outputs.remove(s)
+        for s in exceptional:
+            s.close()
+            del client_address[s]
 
 def rdp_connection(address, buffer_size, payload_size):
     connection = server_RDP(address, buffer_size, payload_size) 
     return connection
-    
+
+def new_connection(sock, inputs):
+    inputs.append(sock)
 
 def file_finder(string):
     file_buf= re.search('GET /(.+?) HTTP/1.0', string)

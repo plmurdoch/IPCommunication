@@ -110,24 +110,19 @@ class Client_RDP:
 
 def udp_initialize(client):
     client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    client_sock.setblocking(1)
-    client_sock.settimeout(3)
+    client_sock.settimeout(1)
     address = (client.ip, client.port)
     client.init_syn()
     inputs = [client_sock]
     outputs = [client_sock]
+    time_out = 10
     while True:
-        readable, writable, exceptional = select.select(inputs, outputs, inputs, 1)
+        readable, writable, exceptional = select.select(inputs, outputs, inputs, time_out)
         if client_sock in readable:
-            try:
-                message, address = client_sock.recvfrom(client.buffer)
-            except client_sock.TimeoutError:
-                if len(client.possible_loss) != 0:
-                    send_timestamps(client.possible_loss)
-                client_sock.sendto(client.possible_loss.encode(),address)
-            else:
-                receive_timestamps(message.decode())
-                client.decapsulate(message.decode())
+            message, address = client_sock.recvfrom(client.buffer)
+            receive_timestamps(message.decode())
+            client.decapsulate(message.decode())
+            outputs.append(client_sock)
         if client_sock in writable:
             if len(client.send_buff) != 0:
                 mess = client.send_buff[0]
@@ -136,10 +131,15 @@ def udp_initialize(client):
                 if len(mess) != 0:
                     send_timestamps(mess)
                 client_sock.sendto(mess.encode(), address)
+                outputs.remove(client_sock)
             if client.get_state() == "closed":
                 break
         if client_sock in exceptional:
             break
+        if not(readable or writable or exceptional):
+            if len(client.possible_loss) != 0:
+                client.send_buff.append(client.possible_loss)
+                outputs.append(client_sock)
 
     
 def file_writer(file_data, file_name):
