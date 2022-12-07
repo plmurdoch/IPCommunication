@@ -143,8 +143,7 @@ class rdp_receive:
     def file_write(self,information,fin_find):
         file = open(self.write,"a")
         file.write(information)
-        if fin_find == 1:
-            file.close()
+        file.close()
     
 #function for udp client communicating with udp echo server    
 def udp_initializer(ip_ad, port, read, write):
@@ -176,9 +175,10 @@ def udp_initializer(ip_ad, port, read, write):
                     send_buf,fin_find = rdp_sender.rcv_ack(data.decode(), fin_find, rdp_receiver.window)
                 else:
                     send_buf = rdp_receiver.rcv_data(data.decode(),fin_find) 
+            outputs.append(udp_sock)
         if udp_sock in writable:
             bytes_sent = udp_sock.sendto(send_buf.encode(),address)
-            time.sleep(0.01)
+            outputs.remove(udp_sock)
         if udp_sock in exceptional:
             udp_sock.close()
             break
